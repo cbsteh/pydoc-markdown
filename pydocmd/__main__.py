@@ -66,9 +66,7 @@ def write_temp_mkdocs_config(inconf):
 
   config = {key: inconf[key] for key in ('site_name', 'site_dir', 'theme')}
   config['docs_dir'] = inconf['gens_dir']
-  # Added 'extra_css' and 'use_directory_urls' for customization
-  for key in ('markdown_extensions', 'pages', 'repo_url', 'extra_css',
-              'use_directory_urls'):
+  for key in ('markdown_extensions', 'pages', 'repo_url'):
     if key in inconf:
       config[key] = inconf[key]
 
