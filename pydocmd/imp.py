@@ -76,8 +76,12 @@ def import_object_with_scope(name):
         raise
   return obj, scope
 
-
 def dir_object(name):
+  # include these double underscores methods
+  magic_methods = ['__init__',
+                   '__del__',
+                   '__float__',
+                   ]
   prefix = None
   obj = import_object(name)
   if isinstance(obj, types.ModuleType):
@@ -86,10 +90,14 @@ def dir_object(name):
 
   result = []
   for key, value in getattr(obj, '__dict__', {}).items():
-    if key.startswith('_'): continue
+    # Magic methods to be included
+    if key.startswith('_') and key not in magic_methods: continue
+    # But exclude class attributes
+    if isinstance(getattr(obj, key), (int, float, list, tuple, dict)): continue
     if not getattr(value, '__doc__'): continue
     if all is not None and key not in all: continue
     if prefix is not None and getattr(value, '__module__', None) != prefix:
       continue
     result.append(key)
   return result
+
