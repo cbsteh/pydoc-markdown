@@ -24,97 +24,105 @@ key. A loader basically takes care of loading the documentation content for
 that name, but is not supposed to apply preprocessing.
 """
 
-from __future__ import print_function
+import inspect
+from textwrap import dedent
+
+from six.moves import range
+
 from .document import Section
 from .imp import import_object_with_scope
-import inspect
 
-
-def trim(docstring):
-  if not docstring:
-    return ''
-  lines = [x.rstrip() for x in docstring.split('\n')]
-  lines[0] = lines[0].lstrip()
-
-  indent = None
-  for i, line in enumerate(lines):
-    if i == 0 or not line: continue
-    new_line = line.lstrip()
-    delta = len(line) - len(new_line)
-    if indent is None:
-      indent = delta
-    elif delta > indent:
-      new_line = ' ' * (delta - indent) + new_line
-    lines[i] = new_line
-
-  return '\n'.join(lines)
+# CBSTEH: Check if an object (o) is a namedtuple type
+def isnamedtuple(o):
+    bnt = (hasattr(o, "_fields") and hasattr(o, "_asdict") and callable(o._asdict))
+    return bnt
 
 
 class PythonLoader(object):
-  """
-  Expects absolute identifiers to import with #import_object_with_scope().
-  """
-
-  def __init__(self, config):
-    self.config = config
-
-  def load_section(self, section):
     """
-    Loads the contents of a #Section. The `section.identifier` is the name
-    of the object that we need to load.
-
-    # Arguments
-      section (Section): The section to load. Fill the `section.title` and
-        `section.content` values. Optionally, `section.loader_context` can
-        be filled with custom arbitrary data to reference at a later point.
+    Expects absolute identifiers to import with #import_object_with_scope().
     """
 
-    assert section.identifier is not None
-    obj, scope = import_object_with_scope(section.identifier)
+    def __init__(self, config):
+        self.config = config
 
-    if '.' in section.identifier:
-      default_title = section.identifier.rsplit('.', 1)[1]
-    else:
-      default_title = section.identifier
+    def load_section(self, section):
+        """
+        Loads the contents of a #Section. The `section.identifier` is the name
+        of the object that we need to load.
 
-    section.title = getattr(obj, '__name__', default_title)
-    section.content = trim(getattr(obj, '__doc__', None) or '')
-    section.loader_context = {'obj': obj, 'scope': scope}
+        # Arguments
+          section (Section): The section to load. Fill the `section.title` and
+            `section.content` values. Optionally, `section.loader_context` can
+            be filled with custom arbitrary data to reference at a later point.
+        """
 
-    # Add the function signature in a code-block.
-    if callable(obj):
-      sig = get_function_signature(obj, scope if inspect.isclass(scope) else None)
-      section.content = '```python\n{}\n```\n'.format(sig) + section.content
+        assert section.identifier is not None
+        obj, scope = import_object_with_scope(section.identifier)
+
+        if '.' in section.identifier:
+            default_title = section.identifier.rsplit('.', 1)[1]
+        else:
+            default_title = section.identifier
+
+        # CBSTEH: Substitute name '__init__'
+        title = getattr(obj, '__name__', default_title)
+        if title == '__init__':
+            title = '<em>Constructor</em> __init__'
+        section.title = title
+
+        # section.title = getattr(obj, '__name__', default_title)
+        section.content = dedent(getattr(obj, '__doc__', None) or '')
+        section.loader_context = {'obj': obj, 'scope': scope}
+
+        # CBSTEH: Identify the object as class, function, or namedtuple and append type to title
+        if isnamedtuple(obj):
+            section.title += ' <em>namedtuple</em>'
+        elif inspect.isclass(obj):
+            section.title += ' <em>class</em>'
+        elif callable(obj) and not inspect.isclass(scope):
+            section.title += ' <em>function</em>'
+
+        # Add the function signature in a code-block.
+        # CBSTEH: Ignore namedtuple signature
+        if callable(obj) and not ('namedtuple' in section.content):
+            sig = get_function_signature(obj, scope if inspect.isclass(scope) else None)
+            # CBSTEH: Correct the class docstring bug
+            if not inspect.isclass(obj):
+                section.content = '```python\n{}\n```\n'.format(sig) + section.content
 
 
 def get_function_signature(function, owner_class=None, show_module=False):
-  isclass = inspect.isclass(function)
+    isclass = inspect.isclass(function)
 
-  # Get base name.
-  name_parts = []
-  if show_module:
-    name_parts.append(function.__module__)
-  if owner_class:
-    name_parts.append(owner_class.__name__)
-  name_parts.append(function.__name__)
-  name = '.'.join(name_parts)
+    # Get base name.
+    name_parts = []
+    if show_module:
+        name_parts.append(function.__module__)
+    if owner_class:
+        name_parts.append(owner_class.__name__)
+    # CBSTEH: Remove '__init__' from function name and signature
+    if function.__name__ != '__init__':
+        name_parts.append(function.__name__)
+    name = '.'.join(name_parts)
 
-  if isclass:
-    function = function.__init__
-  if hasattr(inspect, 'signature'):
-    sig = str(inspect.signature(function))
-  else:
-    argspec = inspect.getargspec(function)
-    # Generate the argument list that is separated by colons.
-    args = argspec.args[:]
-    if argspec.defaults:
-      offset = len(args) - len(argspec.defaults)
-      for i, default in enumerate(argspec.defaults):
-        args[i + offset] = '{}={!r}'.format(args[i + offset], argspec.defaults[i])
-    if argspec.varargs:
-      args.append('*' + argspec.varargs)
-    if argspec.keywords:
-      args.append('**' + argspec.keywords)
-    sig = '(' + ', '.join(args) + ')'
+    # CBSTEH: Commented out two lines below to correct the constructor docstring bug
+    # if isclass:
+    #   function = function.__init__
+    if hasattr(inspect, 'signature'):
+        sig = str(inspect.signature(function))
+    else:
+        argspec = inspect.getargspec(function)
+        # Generate the argument list that is separated by colons.
+        args = argspec.args[:]
+        if argspec.defaults:
+            offset = len(args) - len(argspec.defaults)
+            for i, default in enumerate(argspec.defaults):
+                args[i + offset] = '{}={!r}'.format(args[i + offset], argspec.defaults[i])
+        if argspec.varargs:
+            args.append('*' + argspec.varargs)
+        if argspec.keywords:
+            args.append('**' + argspec.keywords)
+        sig = '(' + ', '.join(args) + ')'
 
-  return name + sig
+    return name + sig

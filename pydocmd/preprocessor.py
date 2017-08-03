@@ -47,20 +47,22 @@ class Preprocessor(object):
       if not codeblock_opened:
         line, current_section = self._preprocess_line(line, current_section)
       lines.append(line)
-    section.content = self._preprocess_refs('\n'.join(lines))
+      section.content = self._preprocess_refs('\n'.join(lines))
 
   def _preprocess_line(self, line, current_section):
-    match = re.match(r'# (.*)$', line)
+    match = re.match('\s*# (.*)$', line)
     if match:
       current_section = match.group(1).strip().lower()
-      line = re.sub(r'# (.*)$', r'__\1__\n', line)
+      line = re.sub(r'\s*# (.*)$', r'__\1__\n', line)
 
     # TODO: Parse type names in parentheses after the argument/attribute name.
     if current_section in ('arguments', 'parameters'):
       style = r'- __\1__:\3'
-    elif current_section in ('attributes', 'members', 'raises'):
+    # CBSTEH: added 'methods' and 'class attributes'
+    elif current_section in ('attributes', 'members', 'raises', 'methods', 'class attributes'):
       style = r'- `\1`:\3'
-    elif current_section in ('returns',):
+    # CBSTEH: added 'yields'
+    elif current_section in ('returns', 'yields'):
       style = r'`\1`:\3'
     else:
       style = None
@@ -83,4 +85,4 @@ class Preprocessor(object):
       if has_trailing_dot:
         result += '.'
       return result
-    return re.sub('\B#([\w\d\._]+)(\(\))?', handler, content)
+    return re.sub('#([\w\d\._]+)(\(\))?', handler, content)
